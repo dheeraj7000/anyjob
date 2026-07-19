@@ -1,0 +1,614 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>anyjob — you still click Submit</title>
+<meta name="description" content="anyjob crawls job postings and AI-fills the application form for you. It never submits — you review the fill and hit Submit yourself." />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%9A%80%3C/text%3E%3C/svg%3E" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --ink-bg: #12141c;
+    --bg-raised: #1a1e2c;
+    --bg-raised-2: #202541;
+    --paper: #ece7da;
+    --paper-dim: #948f9c;
+    --amber: #d99a4e;
+    --amber-dim: #a5793c;
+    --stamp: #6f9c86;
+    --line: #2a2d3d;
+    --danger: #d9714e;
+    --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Consolas, monospace;
+    --font-sans: "IBM Plex Sans", system-ui, sans-serif;
+    --measure: 62ch;
+  }
+
+  * { box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    * { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+  }
+
+  body {
+    margin: 0;
+    background: var(--ink-bg);
+    color: var(--paper);
+    font-family: var(--font-sans);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  a { color: var(--amber); }
+  a:focus-visible, button:focus-visible, summary:focus-visible {
+    outline: 2px solid var(--amber);
+    outline-offset: 3px;
+  }
+
+  code, .mono { font-family: var(--font-mono); }
+
+  img, svg { max-width: 100%; }
+
+  .wrap {
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 0 24px;
+  }
+
+  /* ---------- nav ---------- */
+  nav.wrap {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-top: 22px;
+    padding-bottom: 22px;
+  }
+
+  .wordmark {
+    font-family: var(--font-mono);
+    font-weight: 700;
+    font-size: 18px;
+    letter-spacing: -0.02em;
+    color: var(--paper);
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .wordmark .prompt { color: var(--amber); }
+
+  .nav-links { display: flex; gap: 22px; align-items: center; font-size: 14px; }
+  .nav-links a { color: var(--paper-dim); text-decoration: none; }
+  .nav-links a:hover { color: var(--paper); }
+  .nav-links .cta {
+    color: var(--ink-bg);
+    background: var(--amber);
+    padding: 7px 14px;
+    border-radius: 3px;
+    font-weight: 600;
+  }
+  .nav-links .cta:hover { background: #e6ac66; }
+
+  /* ---------- hero ---------- */
+  header.hero {
+    padding: 52px 0 40px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .hero-grid {
+    display: grid;
+    grid-template-columns: 1.1fr 1fr;
+    gap: 48px;
+    align-items: center;
+  }
+
+  @media (max-width: 820px) {
+    .hero-grid { grid-template-columns: 1fr; }
+  }
+
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--stamp);
+    margin: 0 0 14px;
+  }
+
+  h1 {
+    font-family: var(--font-mono);
+    font-weight: 700;
+    font-size: clamp(32px, 4.6vw, 50px);
+    line-height: 1.08;
+    letter-spacing: -0.01em;
+    margin: 0 0 20px;
+    text-wrap: balance;
+    color: var(--paper);
+  }
+
+  h1 .accent { color: var(--amber); }
+
+  .lede {
+    font-size: 17px;
+    color: #c9c4d6;
+    max-width: 46ch;
+    margin: 0 0 28px;
+  }
+
+  .hero-ctas { display: flex; gap: 14px; flex-wrap: wrap; }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--font-sans);
+    font-weight: 600;
+    font-size: 14.5px;
+    padding: 12px 20px;
+    border-radius: 4px;
+    text-decoration: none;
+    border: 1px solid transparent;
+    transition: transform 0.1s, filter 0.15s;
+  }
+  .btn:active { transform: scale(0.98); }
+
+  .btn-primary { background: var(--amber); color: var(--ink-bg); }
+  .btn-primary:hover { filter: brightness(1.08); }
+
+  .btn-ghost { border-color: var(--line); color: var(--paper); }
+  .btn-ghost:hover { border-color: var(--paper-dim); }
+
+  /* ---------- terminal mock ---------- */
+  .terminal {
+    background: var(--bg-raised);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 20px 60px -20px rgba(0, 0, 0, 0.6);
+  }
+
+  .terminal-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 12px;
+    background: #161927;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--line); }
+  .dot.r { background: #e0736b; }
+  .dot.y { background: #e0b96b; }
+  .dot.g { background: #7cc09a; }
+  .terminal-bar .title { margin-left: 8px; font-family: var(--font-mono); font-size: 11.5px; color: var(--paper-dim); }
+
+  .terminal-body {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    padding: 18px;
+    color: #d7d2c8;
+    min-height: 210px;
+  }
+
+  .terminal-body .prompt-char { color: var(--stamp); }
+  .terminal-body .cmd { color: var(--paper); }
+  .terminal-body .out { color: var(--paper-dim); display: block; margin: 2px 0 10px; }
+  .terminal-body .stop { color: var(--amber); font-weight: 600; }
+  .caret {
+    display: inline-block;
+    width: 7px;
+    height: 14px;
+    background: var(--amber);
+    vertical-align: text-bottom;
+    animation: blink 1s step-start infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* ---------- stamp strip ---------- */
+  .stamp-strip {
+    padding: 30px 0;
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    justify-content: center;
+    flex-wrap: wrap;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .stamp {
+    font-family: var(--font-mono);
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--stamp);
+    border: 2px solid var(--stamp);
+    border-radius: 5px;
+    padding: 8px 14px;
+    transform: rotate(-2.5deg);
+    white-space: nowrap;
+  }
+
+  .stamp-strip p {
+    margin: 0;
+    color: var(--paper-dim);
+    font-size: 14px;
+    max-width: 46ch;
+  }
+
+  /* ---------- section shell ---------- */
+  section { padding: 64px 0; border-bottom: 1px solid var(--line); }
+  section:last-of-type { border-bottom: none; }
+
+  .section-head { margin-bottom: 38px; max-width: var(--measure); }
+  .section-head .eyebrow { margin-bottom: 10px; }
+  h2 {
+    font-family: var(--font-mono);
+    font-size: clamp(22px, 3vw, 28px);
+    margin: 0 0 10px;
+    color: var(--paper);
+    text-wrap: balance;
+  }
+  .section-head p { color: var(--paper-dim); margin: 0; font-size: 15px; }
+
+  /* ---------- pipeline (ledger rows) ---------- */
+  .ledger { display: flex; flex-direction: column; }
+
+  .ledger-row {
+    display: grid;
+    grid-template-columns: 56px 1fr;
+    gap: 20px;
+    padding: 22px 0;
+    border-top: 1px solid var(--line);
+    opacity: 0;
+    transform: translateY(10px);
+    transition: opacity 0.5s ease, transform 0.5s ease;
+  }
+  .ledger-row.in-view { opacity: 1; transform: translateY(0); }
+  .ledger-row:last-child { border-bottom: 1px solid var(--line); }
+
+  .ledger-row .num {
+    font-family: var(--font-mono);
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--amber-dim);
+  }
+
+  .ledger-row h3 {
+    margin: 0 0 6px;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--paper);
+  }
+  .ledger-row p { margin: 0; color: var(--paper-dim); font-size: 14.5px; max-width: 58ch; }
+  .ledger-row code {
+    background: var(--bg-raised);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    padding: 1px 6px;
+    font-size: 13px;
+    color: var(--stamp);
+  }
+
+  /* ---------- two paths ---------- */
+  .paths { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 720px) { .paths { grid-template-columns: 1fr; } }
+
+  .path-card {
+    background: var(--bg-raised);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 24px;
+  }
+
+  .path-card .kicker {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--amber);
+    margin: 0 0 8px;
+  }
+  .path-card h3 { margin: 0 0 10px; font-size: 18px; color: var(--paper); }
+  .path-card ul { margin: 0; padding-left: 18px; color: var(--paper-dim); font-size: 14px; }
+  .path-card li { margin-bottom: 6px; }
+
+  /* ---------- extension showcase (mirrors the real side panel) ---------- */
+  .showcase { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: center; }
+  @media (max-width: 820px) { .showcase { grid-template-columns: 1fr; } }
+
+  .panel-mock {
+    background: radial-gradient(circle at 15% 0%, #23205a 0%, transparent 45%),
+      radial-gradient(circle at 100% 20%, #1c3b4a 0%, transparent 40%), #0b0e1a;
+    border: 1px solid #262e4d;
+    border-radius: 14px;
+    padding: 16px;
+    box-shadow: 0 20px 60px -20px rgba(0, 0, 0, 0.7);
+    font-family: var(--font-sans);
+  }
+
+  .panel-mock .p-header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .panel-mock .p-header .logo { font-size: 20px; }
+  .panel-mock .p-header b {
+    font-size: 14px;
+    background: linear-gradient(90deg, #7c5cff, #ff5ca8 60%, #35e0c9);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .panel-mock .p-card {
+    background: #171d33; border: 1px solid #262e4d; border-radius: 12px;
+    padding: 10px 12px; margin-bottom: 8px; font-size: 11px; color: #8891b5;
+  }
+  .panel-mock .p-card .t { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: #8891b5; margin-bottom: 6px; }
+  .panel-mock .drop { border: 1.5px dashed #262e4d; border-radius: 8px; padding: 8px 10px; font-size: 11px; color: #6f78a3; }
+  .panel-mock .drop.filled { color: #35e0c9; font-weight: 600; }
+  .panel-mock .fill-btn {
+    margin-top: 10px; text-align: center; border-radius: 9px; padding: 10px; font-size: 12.5px; font-weight: 700; color: white;
+    background: linear-gradient(90deg, #7c5cff, #ff5ca8);
+  }
+  .panel-mock .result-row { display: flex; gap: 6px; font-size: 10.5px; padding: 5px 7px; border-radius: 6px; background: rgba(255,255,255,0.03); margin-top: 5px; }
+  .panel-mock .result-row.ok { border-left: 2px solid #35e0a5; color: #cfd3ef; }
+  .panel-mock .result-row.skip { border-left: 2px solid #ff5c7a; color: #cfd3ef; }
+
+  .showcase-copy h2 { margin-bottom: 14px; }
+  .showcase-copy ul { color: var(--paper-dim); padding-left: 18px; font-size: 15px; }
+  .showcase-copy li { margin-bottom: 10px; }
+  .showcase-copy strong { color: var(--paper); }
+
+  /* ---------- quickstart ---------- */
+  .code-block {
+    background: var(--bg-raised);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 18px 20px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    overflow-x: auto;
+    color: #d7d2c8;
+    line-height: 1.9;
+  }
+  .code-block .c1 { color: var(--paper-dim); }
+  .code-block .prompt-char { color: var(--stamp); }
+
+  /* ---------- footer ---------- */
+  footer { padding: 40px 0 60px; }
+  .footer-grid { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 20px; align-items: center; }
+  footer p { margin: 0; color: var(--paper-dim); font-size: 13.5px; }
+  footer .foot-links { display: flex; gap: 18px; font-size: 13.5px; }
+  footer .foot-links a { color: var(--paper-dim); text-decoration: none; }
+  footer .foot-links a:hover { color: var(--paper); }
+</style>
+</head>
+<body>
+
+  <nav class="wrap">
+    <a class="wordmark" href="#top"><span class="prompt">$</span> anyjob</a>
+    <div class="nav-links">
+      <a href="#how">How it works</a>
+      <a href="#paths">CLI vs. extension</a>
+      <a href="#start">Quickstart</a>
+      <a class="cta" href="https://github.com/dheeraj7000/anyjob">GitHub ↗</a>
+    </div>
+  </nav>
+
+  <header class="hero" id="top">
+    <div class="wrap hero-grid">
+      <div>
+        <p class="eyebrow">// crawl. parse. fill. stop.</p>
+        <h1>It fills out the form.<br /><span class="accent">You still click Submit.</span></h1>
+        <p class="lede">
+          anyjob logs into a job site with your real credentials, scrapes the posting, and uses an
+          LLM to map your actual resume onto the application fields — then it stops. No auto-submit,
+          ever. You review the fill in a real browser window and hit Submit yourself.
+        </p>
+        <div class="hero-ctas">
+          <a class="btn btn-primary" href="https://github.com/dheeraj7000/anyjob">Get the code</a>
+          <a class="btn btn-ghost" href="#paths">See how it fills forms</a>
+        </div>
+      </div>
+
+      <div class="terminal" aria-hidden="true">
+        <div class="terminal-bar">
+          <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+          <span class="title">anyjob — apply</span>
+        </div>
+        <div class="terminal-body" id="term-body"></div>
+      </div>
+    </div>
+  </header>
+
+  <div class="stamp-strip wrap">
+    <span class="stamp">✓ human reviews every submit</span>
+    <p>No adapter, prompt, or fallback path in this codebase ever calls a site's Submit button. That line doesn't exist.</p>
+  </div>
+
+  <section id="how">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="eyebrow">the pipeline</p>
+        <h2>Five steps, in this exact order</h2>
+        <p>Each stage hands off to the next — nothing here runs out of sequence, and the chain always ends with you, not a click on your behalf.</p>
+      </div>
+      <div class="ledger">
+        <div class="ledger-row"><span class="num">01</span><div><h3>Log in for real</h3><p>Playwright drives your actual username/password through the site's own login form. No session cookies stored, no scraped tokens — <code>npm run login</code> once per site.</p></div></div>
+        <div class="ledger-row"><span class="num">02</span><div><h3>Crawl the postings</h3><p>Adapters for Workday and Greenhouse boards pull listings and full descriptions into a flat local store — <code>npm run crawl</code>.</p></div></div>
+        <div class="ledger-row"><span class="num">03</span><div><h3>Parse your resume once</h3><p>Upload a PDF/DOCX/TXT and an LLM lifts it into a structured profile — your real name, history, and skills, cached at <code>data/profile.json</code>.</p></div></div>
+        <div class="ledger-row"><span class="num">04</span><div><h3>Map fields, not guesses</h3><p>Every labeled input on the form is scanned and matched against your profile. Anything the model can't confidently answer is left blank and flagged, never fabricated.</p></div></div>
+        <div class="ledger-row"><span class="num">05</span><div><h3>Screenshot, then stop</h3><p>The browser window stays open, filled fields are highlighted, and the run ends. You read it over and click Submit yourself.</p></div></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="paths">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="eyebrow">two ways in</p>
+        <h2>Pick the browser you trust more</h2>
+        <p>Same field-mapping engine underneath — the difference is whose browser session does the filling.</p>
+      </div>
+      <div class="paths">
+        <div class="path-card">
+          <p class="kicker">Playwright CLI</p>
+          <h3>A browser anyjob drives</h3>
+          <ul>
+            <li>Runs your real login through <code>npm run login</code>, session cached locally</li>
+            <li>Best for sites behind Workday-style credentialed auth</li>
+            <li>Opens a visible (non-headless) Chromium window to review before you submit</li>
+            <li><code>npm run apply -- workday:asu &lt;jobId&gt;</code></li>
+          </ul>
+        </div>
+        <div class="path-card">
+          <p class="kicker">Chrome side panel</p>
+          <h3>Your own already-logged-in tab</h3>
+          <ul>
+            <li>No credentials touch anyjob at all — it never logs in for you</li>
+            <li>Docks open in the side panel across tab navigation, one click: Scan &amp; Fill</li>
+            <li>Attaches your uploaded resume/cover letter to file-upload fields directly</li>
+            <li>Talks to a local server on <code>127.0.0.1</code>, gated by a token only you have</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="extension">
+    <div class="wrap showcase">
+      <div class="showcase-copy">
+        <p class="eyebrow">the extension</p>
+        <h2>Upload once, fill everywhere</h2>
+        <ul>
+          <li><strong>Upload your resume</strong> and the panel extracts your real name, contact info, and history — no more placeholder data in your forms.</li>
+          <li><strong>Upload a cover letter</strong> once and it's attached automatically to any cover-letter file field it finds.</li>
+          <li><strong>Every fill is visible</strong> — filled fields outline green, anything skipped outlines red with the reason why, right on the page.</li>
+        </ul>
+        <a class="btn btn-ghost" href="https://github.com/dheeraj7000/anyjob/tree/main/extension">Load the extension →</a>
+      </div>
+      <div class="panel-mock">
+        <div class="p-header"><span class="logo">🚀</span><b>anyjob AI Fill</b></div>
+        <div class="p-card"><div class="t">📄 Resume</div><div class="drop filled">📄 alex_thompson_resume.pdf</div></div>
+        <div class="p-card"><div class="t">💌 Cover letter</div><div class="drop">Choose a cover letter (.pdf/.docx/.txt)</div></div>
+        <div class="fill-btn">Scan &amp; Fill This Page</div>
+        <div class="result-row ok">✅ <span>#first_name = "Alex"</span></div>
+        <div class="result-row ok">✅ <span>#email = "alex.t@email.com"</span></div>
+        <div class="result-row skip">❌ <span>#cover_letter — no cover letter uploaded yet</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="start">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="eyebrow">quickstart</p>
+        <h2>Running locally</h2>
+        <p>Everything stays on your machine — credentials, resume, and the LLM calls you configure yourself.</p>
+      </div>
+      <div class="code-block">
+<span class="c1"># install &amp; configure</span><br />
+<span class="prompt-char">$</span> npm install<br />
+<span class="prompt-char">$</span> npx playwright install chromium<br />
+<span class="prompt-char">$</span> cp .env.example .env<br />
+<br />
+<span class="c1"># parse your resume once, log in once per site</span><br />
+<span class="prompt-char">$</span> npm run parse-resume -- ./data/resume.pdf<br />
+<span class="prompt-char">$</span> npm run login -- workday:asu<br />
+<br />
+<span class="c1"># or: start the local server and use the browser extension instead</span><br />
+<span class="prompt-char">$</span> npm run start-all
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="wrap footer-grid">
+      <p>anyjob — MIT-licensed, built for job hunts that don't feel like data entry.</p>
+      <div class="foot-links">
+        <a href="https://github.com/dheeraj7000/anyjob">Source</a>
+        <a href="https://github.com/dheeraj7000/anyjob#readme">Docs</a>
+        <a href="https://github.com/dheeraj7000/anyjob/issues">Issues</a>
+      </div>
+    </div>
+  </footer>
+
+<script>
+  (function () {
+    var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    var body = document.getElementById("term-body");
+    var lines = [
+      { p: true, cmd: "npm run login -- workday:asu" },
+      { out: "Logged in, session cached." },
+      { p: true, cmd: "npm run crawl -- workday:asu --detail" },
+      { out: "Found 14 postings." },
+      { p: true, cmd: "npm run apply -- workday:asu 4127" },
+      { out: "Mapped 22/24 fields. Screenshot saved." },
+      { stop: "Waiting for you to review + click Submit..." }
+    ];
+
+    function render(final) {
+      body.innerHTML = lines.map(function (l) {
+        if (l.stop) return '<span class="stop">' + l.stop + "</span>";
+        if (l.out) return '<span class="out">' + l.out + "</span>";
+        return '<span class="prompt-char">$</span> <span class="cmd">' + l.cmd + "</span><br />";
+      }).join("");
+      if (final) body.insertAdjacentHTML("beforeend", '<span class="caret"></span>');
+    }
+
+    if (reduced) {
+      render(false);
+      return;
+    }
+
+    var html = "";
+    var i = 0;
+    function typeNext() {
+      if (i >= lines.length) { render(true); return; }
+      var l = lines[i];
+      if (l.cmd) {
+        var chars = l.cmd.split("");
+        var j = 0;
+        var partial = "";
+        (function typeChar() {
+          if (j < chars.length) {
+            partial += chars[j++];
+            body.innerHTML = html + '<span class="prompt-char">$</span> <span class="cmd">' + partial + '</span><span class="caret"></span>';
+            setTimeout(typeChar, 18);
+          } else {
+            html += '<span class="prompt-char">$</span> <span class="cmd">' + l.cmd + "</span><br />";
+            i++;
+            setTimeout(typeNext, 260);
+          }
+        })();
+      } else if (l.out) {
+        html += '<span class="out">' + l.out + "</span>";
+        body.innerHTML = html;
+        i++;
+        setTimeout(typeNext, 320);
+      } else if (l.stop) {
+        html += '<span class="stop">' + l.stop + "</span>";
+        body.innerHTML = html;
+        i++;
+        setTimeout(typeNext, 100);
+      }
+    }
+    typeNext();
+  })();
+
+  (function () {
+    var rows = document.querySelectorAll(".ledger-row");
+    if (!("IntersectionObserver" in window) || rows.length === 0) {
+      rows.forEach(function (r) { r.classList.add("in-view"); });
+      return;
+    }
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting) { e.target.classList.add("in-view"); io.unobserve(e.target); }
+      });
+    }, { threshold: 0.15 });
+    rows.forEach(function (r) { io.observe(r); });
+  })();
+</script>
+</body>
+</html>
