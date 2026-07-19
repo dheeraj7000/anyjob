@@ -1,0 +1,32 @@
+{
+  "name": "anyjob",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p .",
+    "cli": "tsx src/cli.ts",
+    "login": "tsx src/cli.ts login",
+    "crawl": "tsx src/cli.ts crawl",
+    "apply": "tsx src/cli.ts apply",
+    "parse-resume": "tsx src/cli.ts parse-resume",
+    "serve": "tsx src/server.ts",
+    "sync-extension": "node scripts/sync-extension.js",
+    "start-all": "bash scripts/start.sh",
+    "stop-all": "bash scripts/stop.sh"
+  },
+  "dependencies": {
+    "playwright": "^1.48.0",
+    "zod": "^3.23.8",
+    "dotenv": "^16.4.5",
+    "pdf-parse": "^1.1.1",
+    "mammoth": "^1.8.0",
+    "commander": "^12.1.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "tsx": "^4.19.0",
+    "@types/node": "^22.7.0",
+    "@types/pdf-parse": "^1.1.4"
+  }
+}

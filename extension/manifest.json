@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "anyjob AI Fill",
+  "version": "0.1.0",
+  "description": "Scans the job application form on the current tab and AI-fills it from your anyjob profile. Never submits for you.",
+  "action": {
+    "default_title": "anyjob AI Fill (opens in the side panel)"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "permissions": ["scripting", "activeTab", "storage", "sidePanel"],
+  "host_permissions": ["http://127.0.0.1/*", "http://*/*", "https://*/*"]
+}
