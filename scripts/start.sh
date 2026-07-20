@@ -6,6 +6,8 @@
 # Safe to re-run: skips anything already running instead of erroring.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+export PATH="/root/miniconda3/bin:$PATH"
+export PYTHONUNBUFFERED=1
 
 mkdir -p data
 SERVER_LOG="data/server.log"
@@ -59,7 +61,7 @@ else
   # exec (twice: subshell -> nohup -> anyapi-daemon) so the backgrounded PID
   # we save is the real daemon process, not a wrapper shell one layer up --
   # otherwise stop.sh's kill targets the wrong process.
-  (cd /root/myai && exec nohup anyapi-daemon --provider deepseek --cookies "$COOKIES" --localstorage "$LOCALSTORAGE" > "$DAEMON_LOG_ABS" 2>&1) &
+  (cd /root/myai && exec nohup python3 -u /root/miniconda3/bin/anyapi-daemon --provider deepseek --verbose --cookies "$COOKIES" --localstorage "$LOCALSTORAGE" > "$DAEMON_LOG_ABS" 2>&1) &
   echo $! > "$DAEMON_PID_FILE"
   echo "    starting (pid $(cat "$DAEMON_PID_FILE")), logging to $DAEMON_LOG -- this launches Chromium, can take ~30s"
   for _ in $(seq 1 60); do

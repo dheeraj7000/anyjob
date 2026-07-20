@@ -218,6 +218,16 @@ async function main() {
         return;
       }
 
+      if (req.method === "GET" && req.url === "/api/profile") {
+        if (existsSync(PROFILE_PATH)) {
+          const profile = JSON.parse(await readFile(PROFILE_PATH, "utf-8"));
+          res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ ok: true, profile }));
+        } else {
+          res.writeHead(404, { "content-type": "application/json" }).end(JSON.stringify({ error: "profile not found" }));
+        }
+        return;
+      }
+
       res.writeHead(404, { "content-type": "application/json" }).end(JSON.stringify({ error: "not found" }));
     } catch (err) {
       res

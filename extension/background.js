@@ -159,5 +159,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true;
   }
 
+  if (message.type === "GET_PROFILE") {
+    callServer("/api/profile").then(sendResponse);
+    return true;
+  }
+
   return false;
 });

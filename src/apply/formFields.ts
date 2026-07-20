@@ -151,7 +151,12 @@ async function mapFieldsIndividually(
   const mappings: FieldMapping["mappings"] = [];
   const unmapped: FieldMapping["unmapped"] = [];
 
-  for (const field of fields) {
+  for (let i = 0; i < fields.length; i++) {
+    const field = fields[i];
+    if (i > 0) {
+      onProgress?.({ type: "status", message: "Waiting 1s to prevent rate limits..." });
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
     onProgress?.({ type: "status", message: `Mapping field "${field.label}"...` });
     try {
       const single = await withOneRetry(

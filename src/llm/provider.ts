@@ -37,6 +37,48 @@ export interface LlmConfig {
  *    web chat UI), so the schema is described in the prompt and the reply
  *    is parsed the same way as the openai fallback path.
  */
+async function fetchWithRetry(
+  url: string,
+  options: RequestInit,
+  onProgress?: OnProgress,
+  maxAttempts = 5,
+  initialDelayMs = 2000
+): Promise<Response> {
+  let attempt = 0;
+  let delayMs = initialDelayMs;
+
+  while (true) {
+    attempt++;
+    try {
+      const res = await fetch(url, options);
+      if (res.status === 429) {
+        if (attempt >= maxAttempts) {
+          return res;
+        }
+        onProgress?.({
+          type: "status",
+          message: `Rate limited (429). Retrying in ${delayMs / 1000}s (attempt ${attempt}/${maxAttempts})...`,
+        });
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        delayMs *= 2;
+        continue;
+      }
+      return res;
+    } catch (err) {
+      if (attempt >= maxAttempts) {
+        throw err;
+      }
+      const msg = err instanceof Error ? err.message : String(err);
+      onProgress?.({
+        type: "status",
+        message: `Network error (${msg}). Retrying in ${delayMs / 1000}s (attempt ${attempt}/${maxAttempts})...`,
+      });
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      delayMs *= 2;
+    }
+  }
+}
+
 export async function chatStructured<T>(
   config: LlmConfig,
   messages: ChatMessage[],
@@ -47,7 +89,32 @@ export async function chatStructured<T>(
   const jsonSchema = zodToJsonSchemaLoose(schema);
 
   if (config.transport === "anyapi-daemon") {
-    const raw = await chatViaAnyapiDaemon(config.anyapi ?? {}, messages, jsonSchema, onProgress);
+    let attempt = 0;
+    const maxAttempts = 3;
+    let delayMs = 3000;
+    let raw = "";
+
+    while (true) {
+      attempt++;
+      try {
+        raw = await chatViaAnyapiDaemon(config.anyapi ?? {}, messages, jsonSchema, onProgress);
+        break;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        const isRateLimit = /rate\s*limit|too\s*many\s*requests|busy|timeout/i.test(msg);
+        if (isRateLimit && attempt < maxAttempts) {
+          onProgress?.({
+            type: "status",
+            message: `Daemon busy/rate-limited (${msg}). Retrying in ${delayMs / 1000}s (attempt ${attempt}/${maxAttempts})...`,
+          });
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+          delayMs *= 2;
+          continue;
+        }
+        throw err;
+      }
+    }
+
     onProgress?.({ type: "status", message: "Parsing AI response as JSON..." });
     try {
       const result = schema.parse(extractJson(raw));
@@ -75,20 +142,20 @@ export async function chatStructured<T>(
     },
   };
 
-  let res = await fetch(`${config.baseUrl}/chat/completions`, {
+  let res = await fetchWithRetry(`${config.baseUrl}/chat/completions`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
       authorization: `Bearer ${config.apiKey}`,
     },
     body: JSON.stringify(body),
-  });
+  }, onProgress);
 
   // Some OpenAI-compatible providers (older vLLM/Ollama builds, some NIM
   // models) reject json_schema response_format. Fall back to plain JSON mode
   // with the schema described in the prompt instead.
   if (res.status === 400 || res.status === 404 || res.status === 422) {
-    res = await fetch(`${config.baseUrl}/chat/completions`, {
+    res = await fetchWithRetry(`${config.baseUrl}/chat/completions`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -107,7 +174,7 @@ export async function chatStructured<T>(
           },
         ],
       }),
-    });
+    }, onProgress);
   }
 
   if (!res.ok) {

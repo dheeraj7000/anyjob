@@ -96,6 +96,32 @@ chrome.runtime.onMessage.addListener((message) => {
   }
 });
 
+async function loadExistingData() {
+  try {
+    const attachmentsResponse = await chrome.runtime.sendMessage({ type: "GET_ATTACHMENTS" });
+    if (attachmentsResponse.ok) {
+      const { resume, coverLetter } = attachmentsResponse.data;
+      if (resume) {
+        document.getElementById("resumeFileLabel").textContent = `📄 ${resume.filename}`;
+        document.getElementById("resumeDrop").classList.add("has-file");
+      }
+      if (coverLetter) {
+        document.getElementById("coverLetterFileLabel").textContent = `📄 ${coverLetter.filename}`;
+        document.getElementById("coverLetterDrop").classList.add("has-file");
+      }
+    }
+
+    const profileResponse = await chrome.runtime.sendMessage({ type: "GET_PROFILE" });
+    if (profileResponse.ok) {
+      const { fullName, email, phone } = profileResponse.profile;
+      resumeInfoEl.textContent = `Extracted: ${fullName} <${email}> ${phone}. Now used to fill forms instead of placeholder data.`;
+      resumeInfoEl.className = "ok";
+    }
+  } catch (e) {
+    console.error("Failed to load existing data:", e);
+  }
+}
+
 async function refreshHealth() {
   const { anyjobToken } = await chrome.storage.local.get("anyjobToken");
   tokenInput.value = anyjobToken ?? "";
@@ -110,6 +136,7 @@ async function refreshHealth() {
   if (health.ok) {
     setStatus("Server reachable.", "ok");
     fillBtn.disabled = false;
+    await loadExistingData();
   } else {
     setStatus(health.error, "err");
     fillBtn.disabled = true;
