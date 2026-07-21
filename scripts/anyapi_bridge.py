@@ -31,6 +31,18 @@ def emit(obj: dict) -> None:
     print(json.dumps(obj), flush=True)
 
 
+class DaemonBridgeError(Exception):
+    """Wraps the daemon's structured error dict (kind/message/retry_after/
+    debug_path -- see anyapi.shared.errors.DaemonError.to_dict()) so main()
+    can forward it as JSON fields instead of collapsing it into str(dict),
+    which throws away retry_after and leaves the Node side unable to tell a
+    genuine rate limit (with a known wait time) from any other failure."""
+
+    def __init__(self, data):
+        self.data = data if isinstance(data, dict) else {"message": str(data)}
+        super().__init__(self.data.get("message", str(data)))
+
+
 async def ask(socket_path: Path, prompt: str) -> str:
     client = DaemonClient(socket_path)
     text_parts = []
@@ -47,7 +59,7 @@ async def ask(socket_path: Path, prompt: str) -> str:
                 return event.data["text"]
             return "".join(text_parts)
         elif event.event == "error":
-            raise RuntimeError(str(event.data))
+            raise DaemonBridgeError(event.data)
     return "".join(text_parts)
 
 
@@ -74,6 +86,14 @@ def main() -> None:
     try:
         text = asyncio.run(ask(socket_path, prompt))
         emit({"type": "done", "text": text})
+    except DaemonBridgeError as e:
+        payload = {"type": "error", "error": e.data.get("message", str(e))}
+        if "kind" in e.data:
+            payload["kind"] = e.data["kind"]
+        if "retry_after" in e.data:
+            payload["retry_after"] = e.data["retry_after"]
+        emit(payload)
+        sys.exit(1)
     except Exception as e:
         emit({"type": "error", "error": str(e)})
         sys.exit(1)

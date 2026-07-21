@@ -130,6 +130,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       body: JSON.stringify({
         jobTitle: message.jobTitle,
         company: message.company,
+        siteKey: message.siteKey,
         fields: message.fields,
       }),
     }).then(sendResponse);

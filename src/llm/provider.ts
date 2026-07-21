@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { chatViaAnyapiDaemon, type AnyapiDaemonConfig } from "./anyapiDaemonClient.js";
+import { chatViaAnyapiDaemon, AnyapiDaemonError, type AnyapiDaemonConfig } from "./anyapiDaemonClient.js";
 
 export interface ChatMessage {
   role: "system" | "user" | "assistant";
@@ -89,9 +89,13 @@ export async function chatStructured<T>(
   const jsonSchema = zodToJsonSchemaLoose(schema);
 
   if (config.transport === "anyapi-daemon") {
+    // Cap how long we'll ever wait on a single rate-limit retry -- the
+    // daemon's own backoff can in principle grow to an hour (see
+    // anyapi's Limiter.record_failure), and blocking an apply run that
+    // long is worse than just surfacing a clear error.
+    const MAX_RATE_LIMIT_WAIT_MS = 3 * 60 * 1000;
     let attempt = 0;
     const maxAttempts = 3;
-    let delayMs = 3000;
     let raw = "";
 
     while (true) {
@@ -101,17 +105,33 @@ export async function chatStructured<T>(
         break;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        const isRateLimit = /rate\s*limit|too\s*many\s*requests|busy|timeout/i.test(msg);
-        if (isRateLimit && attempt < maxAttempts) {
-          onProgress?.({
-            type: "status",
-            message: `Daemon busy/rate-limited (${msg}). Retrying in ${delayMs / 1000}s (attempt ${attempt}/${maxAttempts})...`,
-          });
-          await new Promise((resolve) => setTimeout(resolve, delayMs));
-          delayMs *= 2;
-          continue;
+        const isRateLimited = err instanceof AnyapiDaemonError && err.kind === "RATE_LIMITED";
+        const isTransient = isRateLimited || /rate\s*limit|too\s*many\s*requests|busy|timeout/i.test(msg);
+        if (!isTransient || attempt >= maxAttempts) throw err;
+
+        // The daemon already knows exactly how long its own rate-limit
+        // window needs -- see anyapi's Limiter.next_available_in(). A
+        // short fixed backoff (the old 3s/6s schedule) just gets rejected
+        // again immediately, so honor retry_after instead, plus a small
+        // buffer for clock drift between our process and the daemon's.
+        const retryAfterMs =
+          isRateLimited && err instanceof AnyapiDaemonError && typeof err.retryAfterSeconds === "number"
+            ? Math.ceil(err.retryAfterSeconds * 1000) + 3000
+            : undefined;
+
+        if (retryAfterMs !== undefined && retryAfterMs > MAX_RATE_LIMIT_WAIT_MS) {
+          throw new Error(
+            `${msg} -- this would require waiting ${Math.round(retryAfterMs / 1000)}s, longer than we're willing to block. Try again later.`
+          );
         }
-        throw err;
+
+        const waitMs = retryAfterMs ?? 5000 * attempt;
+        onProgress?.({
+          type: "status",
+          message: `Daemon busy/rate-limited (${msg}). Waiting ${Math.round(waitMs / 1000)}s before retrying (attempt ${attempt}/${maxAttempts})...`,
+        });
+        await new Promise((resolve) => setTimeout(resolve, waitMs));
+        continue;
       }
     }
 

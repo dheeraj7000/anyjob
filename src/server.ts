@@ -6,6 +6,7 @@ import { extname } from "node:path";
 import { loadLlmConfig } from "./config.js";
 import { mapProfileToFields, type FormField } from "./apply/formFields.js";
 import { parseResumeBufferToProfile } from "./profile/resumeParser.js";
+import { clearFieldCache } from "./storage/fieldCache.js";
 import type { JobPosting } from "./sites/adapter.js";
 
 const PORT = Number(process.env.ANYJOB_SERVER_PORT ?? 4173);
@@ -115,6 +116,7 @@ async function main() {
         const body = JSON.parse(await readBody(req)) as {
           jobTitle?: string;
           company?: string;
+          siteKey?: string;
           fields: FormField[];
         };
         const profile = JSON.parse(await readFile(PROFILE_PATH, "utf-8"));
@@ -138,8 +140,13 @@ async function main() {
         const send = (obj: unknown) => res.write(`${JSON.stringify(obj)}\n`);
 
         try {
-          const mapping = await mapProfileToFields(llmConfig, profile, posting, body.fields, (event) =>
-            send(event)
+          const mapping = await mapProfileToFields(
+            llmConfig,
+            profile,
+            posting,
+            body.fields,
+            (event) => send(event),
+            body.siteKey
           );
           send({ type: "result", data: mapping });
         } catch (err) {
@@ -172,6 +179,9 @@ async function main() {
           send({ type: "status", message: "Asking AI to extract your real name and details from the resume..." });
           const profile = await parseResumeBufferToProfile(llmConfig, buf, ext, (event) => send(event));
           await writeFile(PROFILE_PATH, JSON.stringify(profile, null, 2), "utf-8");
+          // The candidate's details just changed -- any remembered field
+          // answers from before (name, address, etc.) may now be stale.
+          await clearFieldCache();
 
           const attachments = await readAttachments();
           attachments.resume = meta;

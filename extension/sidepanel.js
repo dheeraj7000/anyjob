@@ -278,10 +278,19 @@ fillBtn.addEventListener("click", async () => {
             return { ok: false, error: "No labeled form fields found on this page." };
           }
 
+          // Hostname alone isn't a safe cache scope -- many ATS platforms
+          // (Greenhouse, Lever) host every customer's job board under one
+          // shared domain, distinguished only by the first path segment
+          // (e.g. boards.greenhouse.io/<company-slug>/...). Keep this in
+          // sync with siteKeyFor() in src/storage/fieldCache.ts.
+          const firstPathSegment = location.pathname.split("/").filter(Boolean)[0];
+          const siteKey = firstPathSegment ? `${location.hostname}/${firstPathSegment}` : location.hostname;
+
           const response = await chrome.runtime.sendMessage({
             type: "MAP_FIELDS",
             jobTitle: document.title,
             company: location.hostname,
+            siteKey,
             fields,
           });
           if (!response.ok) return response;

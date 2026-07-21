@@ -19,9 +19,31 @@ interface BridgeLine {
   message?: string;
   text?: string;
   error?: string;
+  /** Structured error kind from anyapi's DaemonError (e.g. "RATE_LIMITED", "SELECTOR_BROKEN"). */
+  kind?: string;
+  /** Seconds the daemon says to wait before its rate limiter will allow another request. */
+  retry_after?: number;
 }
 
 const DEFAULT_BRIDGE_SCRIPT = new URL("../../scripts/anyapi_bridge.py", import.meta.url).pathname;
+
+/**
+ * Thrown when the daemon reports a structured error (see anyapi_bridge.py /
+ * anyapi.shared.errors.DaemonError). Callers use `kind`/`retryAfterSeconds`
+ * to distinguish a real rate limit -- with a known wait time -- from other
+ * failures, instead of regex-sniffing the message text.
+ */
+export class AnyapiDaemonError extends Error {
+  readonly kind?: string;
+  readonly retryAfterSeconds?: number;
+
+  constructor(message: string, kind?: string, retryAfterSeconds?: number) {
+    super(message);
+    this.name = "AnyapiDaemonError";
+    this.kind = kind;
+    this.retryAfterSeconds = retryAfterSeconds;
+  }
+}
 
 /**
  * Sends one chat turn through a locally running `anyapi-daemon` (e.g. its
@@ -70,7 +92,7 @@ export async function chatViaAnyapiDaemon(
         resolve(event.text ?? "");
       } else if (event.type === "error") {
         settled = true;
-        reject(new Error(`anyapi daemon error: ${event.error}`));
+        reject(new AnyapiDaemonError(`anyapi daemon error: ${event.error}`, event.kind, event.retry_after));
       } else if (event.type === "token") {
         onProgress?.({ type: "token", message: event.message ?? "" });
       } else if (event.type === "status") {

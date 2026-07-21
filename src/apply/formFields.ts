@@ -5,6 +5,7 @@ import { chatStructured } from "../llm/provider.js";
 import type { LlmConfig, OnProgress } from "../llm/provider.js";
 import type { CandidateProfile } from "../profile/types.js";
 import type { JobPosting, FillResult } from "../sites/adapter.js";
+import { fieldKey, getSiteCache, mergeSiteCache, siteKeyFor, type CachedField } from "../storage/fieldCache.js";
 
 export interface FormField {
   /** Stable CSS selector Playwright can act on directly. */
@@ -104,13 +105,21 @@ async function withOneRetry<T>(fn: () => Promise<T>, label: string, onProgress?:
  * mapping fields one at a time so a single bad field or a mid-batch hiccup
  * doesn't cost you every field -- only the individual fields that actually
  * fail to map end up in `unmapped`, with the real error as the reason.
+ *
+ * Before calling the LLM at all, checks the on-disk field cache (see
+ * ../storage/fieldCache.ts) for fields this site has already answered in a
+ * previous fill -- only fields with no cached answer go to the LLM. `siteKey`
+ * defaults to a key derived from `posting.url`; pass it explicitly when the
+ * caller (e.g. the browser extension) doesn't have a real posting URL to
+ * derive one from.
  */
 export async function mapProfileToFields(
   llmConfig: LlmConfig,
   profile: CandidateProfile,
   posting: JobPosting,
   fields: FormField[],
-  onProgress?: OnProgress
+  onProgress?: OnProgress,
+  siteKey?: string
 ): Promise<FieldMapping> {
   // File inputs (resume/cover letter uploads) can't be filled with a text
   // value from the LLM -- they're attached as real bytes separately (see the
@@ -125,20 +134,89 @@ export async function mapProfileToFields(
     return { mappings: [], unmapped: fileUnmapped };
   }
 
-  let result: FieldMapping;
-  try {
-    onProgress?.({ type: "status", message: `Asking AI to map all ${textFields.length} field(s) in one request...` });
-    result = await withOneRetry(() => requestFieldMapping(llmConfig, profile, posting, textFields, onProgress), "Batch mapping", onProgress);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    onProgress?.({
-      type: "status",
-      message: `Batch mapping failed (${message}). Falling back to mapping each field individually so one failure doesn't lose the rest...`,
-    });
-    result = await mapFieldsIndividually(llmConfig, profile, posting, textFields, onProgress);
+  const site = siteKey ?? siteKeyFor(posting.url);
+  const siteCache = site ? await getSiteCache(site) : {};
+
+  const cachedMappings: FieldMapping["mappings"] = [];
+  const cachedUnmapped: FieldMapping["unmapped"] = [];
+  const toMap: FormField[] = [];
+
+  for (const field of textFields) {
+    const cached = siteCache[fieldKey(field.label, field.type)];
+    if (!cached) {
+      toMap.push(field);
+      continue;
+    }
+    // A cached select/radio value only applies if it's still a valid option
+    // here -- the same label can back a differently-populated dropdown.
+    const optionStillValid =
+      cached.value === undefined || (field.type !== "select" && field.type !== "radio") || (field.options?.includes(cached.value) ?? false);
+    if (cached.value !== undefined && optionStillValid) {
+      cachedMappings.push({ selector: field.selector, value: cached.value });
+    } else if (cached.reason !== undefined) {
+      cachedUnmapped.push({ selector: field.selector, reason: cached.reason });
+    } else {
+      toMap.push(field);
+    }
   }
 
-  return { mappings: result.mappings, unmapped: [...result.unmapped, ...fileUnmapped] };
+  if (cachedMappings.length + cachedUnmapped.length > 0) {
+    onProgress?.({
+      type: "status",
+      message: `Reused ${cachedMappings.length + cachedUnmapped.length} field(s) already answered on this site before -- no AI call needed for those.`,
+    });
+  }
+
+  let result: FieldMapping = { mappings: [], unmapped: [] };
+  if (toMap.length > 0) {
+    try {
+      onProgress?.({ type: "status", message: `Asking AI to map ${toMap.length} new field(s)...` });
+      result = await withOneRetry(() => requestFieldMapping(llmConfig, profile, posting, toMap, onProgress), "Batch mapping", onProgress);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      onProgress?.({
+        type: "status",
+        message: `Batch mapping failed (${message}). Falling back to mapping each field individually so one failure doesn't lose the rest...`,
+      });
+      result = await mapFieldsIndividually(llmConfig, profile, posting, toMap, onProgress);
+    }
+
+    if (site) await cacheNewResults(site, toMap, result);
+  }
+
+  return {
+    mappings: [...cachedMappings, ...result.mappings],
+    unmapped: [...cachedUnmapped, ...result.unmapped, ...fileUnmapped],
+  };
+}
+
+/**
+ * Persists freshly-resolved mappings/unmapped reasons for next time. Skips
+ * caching resolved *values* for textareas -- those tend to be free-text essay
+ * answers tailored to a specific job posting (see the "subjective essay
+ * question" instruction in requestFieldMapping's system prompt), and reusing
+ * one posting's tailored answer for another posting under the same siteKey
+ * would silently submit the wrong text. A textarea that came back unmapped
+ * (e.g. "requires a personal essay answer") is still safe to cache, since
+ * that outcome doesn't depend on which posting it is.
+ */
+async function cacheNewResults(site: string, mappedFields: FormField[], result: FieldMapping): Promise<void> {
+  const bySelector = new Map(mappedFields.map((f) => [f.selector, f]));
+  const toCache: Record<string, CachedField> = {};
+  const updatedAt = new Date().toISOString();
+
+  for (const m of result.mappings) {
+    const field = bySelector.get(m.selector);
+    if (field && field.type !== "textarea") {
+      toCache[fieldKey(field.label, field.type)] = { value: m.value, updatedAt };
+    }
+  }
+  for (const u of result.unmapped) {
+    const field = bySelector.get(u.selector);
+    if (field) toCache[fieldKey(field.label, field.type)] = { reason: u.reason, updatedAt };
+  }
+
+  await mergeSiteCache(site, toCache);
 }
 
 async function mapFieldsIndividually(
@@ -151,11 +229,25 @@ async function mapFieldsIndividually(
   const mappings: FieldMapping["mappings"] = [];
   const unmapped: FieldMapping["unmapped"] = [];
 
+  // The anyapi-daemon transport drives a real web chat UI (e.g.
+  // chat.deepseek.com) through Playwright, and its daemon enforces its own
+  // human-like pacing (a minimum ~3s between messages, plus burst/hourly
+  // caps -- see anyapi's Limiter). One request per field here can easily
+  // fire faster than that, so slow our own cadence down to match rather
+  // than relying entirely on the daemon's rate-limit rejections + retries.
+  const interFieldDelayMs = llmConfig.transport === "anyapi-daemon" ? 4000 : 1000;
+  if (llmConfig.transport === "anyapi-daemon" && fields.length > 5) {
+    onProgress?.({
+      type: "status",
+      message: `Mapping ${fields.length} fields one at a time over a shared web chat -- this respects its pacing/rate limits, so it may take a few minutes.`,
+    });
+  }
+
   for (let i = 0; i < fields.length; i++) {
     const field = fields[i];
     if (i > 0) {
-      onProgress?.({ type: "status", message: "Waiting 1s to prevent rate limits..." });
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      onProgress?.({ type: "status", message: `Waiting ${interFieldDelayMs / 1000}s to keep pace with the previous field...` });
+      await new Promise((resolve) => setTimeout(resolve, interFieldDelayMs));
     }
     onProgress?.({ type: "status", message: `Mapping field "${field.label}"...` });
     try {
